@@ -17,7 +17,7 @@ from mcp import stdio_client, StdioServerParameters
 from strands import Agent
 from strands.tools.mcp import MCPClient
 
-from ack_generator_agent.utils.constants import DOCS_AGENT_SYSTEM_PROMPT
+from config.prompts import DOCS_AGENT_SYSTEM_PROMPT
 
 
 class DocsAgent:

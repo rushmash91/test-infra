@@ -16,19 +16,17 @@ from strands import tool, Agent
 import json
 from rich.console import Console
 from ack_builder_agent.tools import build_controller, read_build_log, sleep, verify_build_completion
-from ack_builder_agent.utils.constants import ACK_SYSTEM_PROMPT as BUILDER_SYSTEM_PROMPT
-
-# Import settings and utility functions from utils package
-from ack_generator_agent.utils import (
-    settings,
+from config.prompts import ACK_BUILDER_SYSTEM_PROMPT
+from utils.settings import settings
+from utils.repo import (
     ensure_ack_directories,
     ensure_service_repo_cloned,
     ensure_aws_sdk_go_v2_cloned,
 )
 
-from ack_generator_agent.utils.memory_agent import MemoryAgent
-from ack_generator_agent.utils.knowledge_base import retrieve_from_knowledge_base
-from ack_generator_agent.utils.docs_agent import DocsAgent
+from utils.memory_agent import MemoryAgent
+from utils.knowledge_base import retrieve_from_knowledge_base
+from utils.docs_agent import DocsAgent
 
 console = Console()
 memory_agent = MemoryAgent()
@@ -109,7 +107,7 @@ def build_controller_agent(service: str) -> str:
     """
     try:
         builder_agent = Agent(
-            system_prompt=BUILDER_SYSTEM_PROMPT,
+            system_prompt=ACK_BUILDER_SYSTEM_PROMPT,
             tools=[build_controller, read_build_log, sleep, verify_build_completion]
         )
         response = builder_agent(service)
