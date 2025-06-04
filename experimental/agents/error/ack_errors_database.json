@@ -1,0 +1,131 @@
+{
+  "errors": [
+    {
+      "error_signature": "tag field path Tags does not exist inside [Resource] crd",
+      "error_description": "The code-generator attempts to generate tag-handling code but cannot find a 'Tags' field in the resource CRD. This occurs when a resource that does not support tagging is not marked as such in generator.yaml.",
+      "category": "ErrorCategory.TAGGING",
+      "solution_description": "Mark the resource to ignore tags in generator.yaml",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    tags:\n      ignore: true  # Skip tag processing for this resource",
+      "code_example": null,
+      "prevention_tip": "Always check AWS documentation to verify if a resource supports tagging before enabling tag generation."
+    },
+    {
+      "error_signature": "error calling GetTagField: tag field path.*does not exist",
+      "error_description": "Custom tag field path specified in generator.yaml does not exist in the resource structure",
+      "category": "ErrorCategory.TAGGING",
+      "solution_description": "Either correct the tag field path or use the default 'Tags' path",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    tags:\n      path: Tagging.TagSet  # Correct path for S3-style tagging\n      # OR remove custom path to use default 'Tags' field",
+      "code_example": null,
+      "prevention_tip": "Verify tag field paths against the AWS API model before specifying custom paths."
+    },
+    {
+      "error_signature": "missing primary identifier|no Name or ID field|could not find field.*for primary key",
+      "error_description": "The code-generator cannot infer a unique key for a resource that lacks a typical 'Name' or 'ID' field, or the specified primary key field doesn't exist",
+      "category": "ErrorCategory.PRIMARY_KEY",
+      "solution_description": "Explicitly configure the primary key in generator.yaml",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    fields:\n      YourIdentifierField:\n        is_primary_key: true\n    # OR if the resource is identified only by ARN:\n    # is_arn_primary_key: true",
+      "code_example": null,
+      "prevention_tip": "Always identify the unique identifier for each resource before starting code generation."
+    },
+    {
+      "error_signature": "multiple fields are marked with is_primary_key",
+      "error_description": "More than one field is marked as the primary key in generator.yaml configuration",
+      "category": "ErrorCategory.PRIMARY_KEY",
+      "solution_description": "Ensure only one field is marked as the primary key",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    fields:\n      CorrectPrimaryKey:\n        is_primary_key: true\n      # Remove is_primary_key from other fields",
+      "code_example": null,
+      "prevention_tip": "Each resource should have exactly one primary identifier field."
+    },
+    {
+      "error_signature": "ResourceNotFoundException returned as 400|exception.*400.*ResourceNotFoundException",
+      "error_description": "Service returns HTTP 400 with ResourceNotFoundException instead of 404, misleading the generator's default logic",
+      "category": "ErrorCategory.EXCEPTION_HANDLING",
+      "solution_description": "Map the exception code to 404 in generator.yaml",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    exceptions:\n      errors:\n        404:\n          code: ResourceNotFoundException  # Map this exception to 404",
+      "code_example": "# Example for DynamoDB tables\nresources:\n  Table:\n    exceptions:\n      errors:\n        404:\n          code: ResourceNotFoundException",
+      "prevention_tip": "Check service documentation for non-standard error code mappings."
+    },
+    {
+      "error_signature": "terminal error.*not handled|validation.*error.*terminal",
+      "error_description": "Terminal errors that should stop reconciliation are not properly configured",
+      "category": "ErrorCategory.EXCEPTION_HANDLING",
+      "solution_description": "Add terminal error codes to prevent infinite retry loops",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    exceptions:\n      terminal_codes:\n        - InvalidParameterValue\n        - MalformedPolicyDocument\n        - ValidationException",
+      "code_example": null,
+      "prevention_tip": "Identify errors that indicate permanent failures vs transient issues."
+    },
+    {
+      "error_signature": "field.*has no members|unsupported.*field|empty.*struct",
+      "error_description": "AWS API model includes fields that ACK cannot support or that result in invalid code/CRD schema",
+      "category": "ErrorCategory.FIELD_MAPPING",
+      "solution_description": "Exclude unsupported fields via ignore.field_paths in generator.yaml",
+      "generator_yaml_fix": "ignore:\n  field_paths:\n    - \"VersioningConfiguration.MFADelete\"  # Unsupported field\n    - \"NotificationConfiguration.EventBridgeConfiguration\"  # Empty struct",
+      "code_example": "# Example from S3 controller\nignore:\n  field_paths:\n    - \"VersioningConfiguration.MFADelete\"\n    - \"NotificationConfiguration.EventBridgeConfiguration\"",
+      "prevention_tip": "Review API models for empty structs or unsupported operations before generation."
+    },
+    {
+      "error_signature": "field not found in Spec|field not found in Status",
+      "error_description": "Referenced field name doesn't exist in the generated CRD structure",
+      "category": "ErrorCategory.FIELD_MAPPING",
+      "solution_description": "Check field naming and path configuration",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    fields:\n      CorrectFieldName:  # Use exact field name from API\n        from:\n          operation: DescribeResource\n          path: CorrectPath",
+      "code_example": null,
+      "prevention_tip": "Verify field names match exactly with AWS SDK Go v2 operation shapes."
+    },
+    {
+      "error_signature": "Group redeclared in this block|other declaration of Group|naming conflict.*Group",
+      "error_description": "Go naming collision when a resource name conflicts with Go package naming, specifically with IAM 'Group' resource",
+      "category": "ErrorCategory.NAMING_CONFLICT",
+      "solution_description": "Use updated ACK code-generator that resolves naming conflicts",
+      "generator_yaml_fix": "# This is resolved in ACK code-generator v1.0+\n# If using older version, consider:\nresources:\n  Group:\n    # Use custom operations or consider renaming if absolutely necessary",
+      "code_example": null,
+      "prevention_tip": "Use ACK code-generator v1.0+ which handles Go keyword conflicts automatically."
+    },
+    {
+      "error_signature": "make build-controller.*failed|build.*error.*compilation",
+      "error_description": "General build failure during controller compilation",
+      "category": "ErrorCategory.BUILD_FAILURE",
+      "solution_description": "Check build logs for specific compilation errors and address them individually",
+      "generator_yaml_fix": null,
+      "code_example": "# Check build logs:\n# make build-controller SERVICE=myservice 2>&1 | tee build.log\n# Look for specific Go compilation errors and fix generator.yaml accordingly",
+      "prevention_tip": "Always run builds incrementally and fix errors one at a time."
+    },
+    {
+      "error_signature": "undefined.*reference|import.*not found|package.*not found",
+      "error_description": "Missing imports or package references in generated code",
+      "category": "ErrorCategory.BUILD_FAILURE",
+      "solution_description": "Ensure all required dependencies are properly configured",
+      "generator_yaml_fix": "# Check if custom hooks reference correct packages\nresources:\n  ResourceName:\n    hooks:\n      sdk_create_pre_build_request:\n        template_path: hooks/resource/sdk_create_pre_build_request.go.tpl\n        # Ensure template imports correct packages",
+      "code_example": null,
+      "prevention_tip": "Verify all custom templates have correct import statements."
+    },
+    {
+      "error_signature": "required field.*missing|validation.*required",
+      "error_description": "Required fields not properly configured in the generated CRD",
+      "category": "ErrorCategory.VALIDATION",
+      "solution_description": "Mark required fields appropriately in generator.yaml",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    fields:\n      RequiredFieldName:\n        is_required: true\n        is_immutable: true  # if it cannot be changed after creation",
+      "code_example": null,
+      "prevention_tip": "Check AWS API documentation for required vs optional parameters."
+    },
+    {
+      "error_signature": "operation.*not found|shape.*not found|API.*model.*error",
+      "error_description": "Referenced AWS API operation or shape doesn't exist in the service model",
+      "category": "ErrorCategory.API_MODEL",
+      "solution_description": "Verify operation names against the AWS SDK Go v2 service model",
+      "generator_yaml_fix": "resources:\n  ResourceName:\n    fields:\n      FieldName:\n        from:\n          operation: CorrectOperationName  # e.g., DescribeTable not GetTable\n          path: CorrectPath",
+      "code_example": null,
+      "prevention_tip": "Always check the AWS SDK Go v2 model files for exact operation names."
+    }
+  ],
+  "categories": [
+    "tagging",
+    "primary_key",
+    "exception_handling",
+    "field_mapping",
+    "naming_conflict",
+    "build_failure",
+    "validation",
+    "api_model"
+  ]
+}

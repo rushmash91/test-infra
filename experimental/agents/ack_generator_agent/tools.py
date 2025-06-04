@@ -58,14 +58,15 @@ def read_service_generator_config(service: str) -> str:
         return f"Error reading generator.yaml for {service}: {str(e)}"
 
 @tool
-def read_service_model(service: str) -> str:
-    """Reads the AWS service model JSON file from the code generator repository.
+def read_service_model(service: str, resource: str) -> str:
+    """Reads comprehensive resource-specific information from the AWS service model JSON file.
 
     Args:
         service: Name of the AWS service (e.g., 's3', 'dynamodb')
+        resource: Name of the specific resource (e.g., 'Bucket', 'Table', 'Cluster')
 
     Returns:
-        str: Content of the service model JSON file or an error message.
+        str: Comprehensive resource-specific content from the service model or an error message.
     """
     try:
         # Make sure AWS SDK is cloned
@@ -83,16 +84,327 @@ def read_service_model(service: str) -> str:
         with open(model_path, 'r') as f:
             content = f.read()
             
-        # Parse and return the full model content
+        # Parse the model JSON
         try:
             data = json.loads(content)
-            return json.dumps(data, indent=2)
         except Exception as e:
             console.log(f"Error parsing model JSON: {str(e)}")
-            return content
+            return f"Error parsing model JSON for {service}: {str(e)}"
+        
+        # Extract comprehensive resource information
+        resource_info = {}
+        
+        # Find the resource in shapes (handle Smithy format)
+        shapes = data.get('shapes', {})
+        if not shapes:
+            return f"Error: No shapes found in service model for {service}"
+        
+        resource_shape = None
+        resource_candidates = []
+        
+        # Build namespace prefix for this service
+        service_namespace = f"com.amazonaws.{service}#"
+        
+        # Look for resource shapes with various strategies
+        for shape_name, shape_data in shapes.items():
+            shape_type = shape_data.get('type', '')
+            
+            # Strategy 1: Exact match with namespace
+            full_resource_name = f"{service_namespace}{resource}"
+            if shape_name == full_resource_name:
+                resource_shape = shape_name
+                break
+                
+            # Strategy 2: Case-insensitive match with namespace
+            if shape_name.lower() == full_resource_name.lower():
+                resource_shape = shape_name
+                break
+                
+            # Strategy 3: Contains resource name (for structures/operations)
+            if (resource.lower() in shape_name.lower() and 
+                shape_type in ['structure', 'operation'] and
+                service_namespace in shape_name):
+                resource_candidates.append((shape_name, shape_data, shape_type))
+        
+        # If no exact match, find the best candidate
+        if not resource_shape and resource_candidates:
+            # Prefer structure types over operations for main resources
+            structure_candidates = [c for c in resource_candidates if c[2] == 'structure']
+            if structure_candidates:
+                # Look for the most likely main resource (shortest name, no prefixes like Create/Delete)
+                best_candidate = min(structure_candidates, 
+                                   key=lambda x: (len(x[0]), 
+                                                'Create' in x[0] or 'Delete' in x[0] or 'List' in x[0]))
+                resource_shape = best_candidate[0]
+            else:
+                resource_shape = resource_candidates[0][0]
+        
+        if not resource_shape:
+            available_shapes = [name for name in shapes.keys() 
+                             if service_namespace in name and 
+                             shapes[name].get('type') in ['structure', 'operation']][:20]
+            return f"Error: Resource '{resource}' not found in service model for {service}. Available resource shapes include: {available_shapes}..."
+        
+        # Collect all resource-related information
+        resource_info['resource_name'] = resource_shape
+        resource_info['shape_definition'] = shapes[resource_shape]
+        
+        # Find operations related to this resource
+        operations = {}
+        related_operations = {}
+        
+        # Collect all operations first
+        for shape_name, shape_data in shapes.items():
+            if shape_data.get('type') == 'operation':
+                operations[shape_name] = shape_data
+        
+        # Find operations related to this resource
+        resource_base_name = resource_shape.split('#')[-1] if '#' in resource_shape else resource_shape
+        
+        for op_name, op_data in operations.items():
+            op_base_name = op_name.split('#')[-1] if '#' in op_name else op_name
+            
+            # Check if operation is related to this resource
+            is_related = False
+            
+            # Strategy 1: Operation name contains resource name
+            if resource_base_name.lower() in op_base_name.lower():
+                is_related = True
+            
+            # Strategy 2: Check input/output shapes
+            input_shape = op_data.get('input', {}).get('target', '')
+            output_shape = op_data.get('output', {}).get('target', '')
+            
+            if input_shape:
+                input_base = input_shape.split('#')[-1] if '#' in input_shape else input_shape
+                if resource_base_name.lower() in input_base.lower():
+                    is_related = True
+                    
+            if output_shape:
+                output_base = output_shape.split('#')[-1] if '#' in output_shape else output_shape
+                if resource_base_name.lower() in output_base.lower():
+                    is_related = True
+            
+            # Strategy 3: Common CRUD patterns
+            crud_patterns = ['Create', 'Delete', 'Update', 'Get', 'List', 'Describe', 'Put']
+            for pattern in crud_patterns:
+                if (f"{pattern}{resource_base_name}" in op_base_name or 
+                    f"{pattern}{resource}" in op_base_name):
+                    is_related = True
+                    break
+            
+            if is_related:
+                related_operations[op_name] = op_data
+        
+        resource_info['related_operations'] = related_operations
+        
+        # Find related shapes (referenced by the main resource and operations)
+        related_shapes = {}
+        
+        def collect_referenced_shapes(shape_data, collected, visited=None):
+            if visited is None:
+                visited = set()
+                
+            if isinstance(shape_data, dict):
+                if 'target' in shape_data:
+                    shape_ref = shape_data['target']
+                    if shape_ref in shapes and shape_ref not in collected and shape_ref not in visited:
+                        visited.add(shape_ref)
+                        collected[shape_ref] = shapes[shape_ref]
+                        collect_referenced_shapes(shapes[shape_ref], collected, visited)
+                elif 'member' in shape_data:
+                    collect_referenced_shapes(shape_data['member'], collected, visited)
+                elif 'key' in shape_data:
+                    collect_referenced_shapes(shape_data['key'], collected, visited)
+                elif 'value' in shape_data:
+                    collect_referenced_shapes(shape_data['value'], collected, visited)
+                else:
+                    for value in shape_data.values():
+                        if isinstance(value, (dict, list)):
+                            collect_referenced_shapes(value, collected, visited)
+            elif isinstance(shape_data, list):
+                for item in shape_data:
+                    collect_referenced_shapes(item, collected, visited)
+        
+        # Collect shapes from main resource
+        collect_referenced_shapes(shapes[resource_shape], related_shapes)
+        
+        # Collect shapes from related operations
+        for op_data in related_operations.values():
+            collect_referenced_shapes(op_data, related_shapes)
+        
+        resource_info['related_shapes'] = related_shapes
+        
+        # Find error shapes for related operations
+        error_shapes = {}
+        for op_name, op_data in related_operations.items():
+            errors = op_data.get('errors', [])
+            for error in errors:
+                error_target = error.get('target', '') if isinstance(error, dict) else error
+                if error_target and error_target in shapes:
+                    error_shapes[error_target] = shapes[error_target]
+        
+        resource_info['error_shapes'] = error_shapes
+        
+        # Extract traits and documentation for all shapes
+        def extract_traits_and_docs(shape_data):
+            """Extract traits and documentation from a shape."""
+            traits = {}
+            documentation = None
+            
+            if isinstance(shape_data, dict):
+                # First, check for a 'traits' dictionary (Smithy format)
+                if 'traits' in shape_data:
+                    traits_dict = shape_data['traits']
+                    if isinstance(traits_dict, dict):
+                        # Extract all traits from the traits dictionary
+                        for trait_key, trait_value in traits_dict.items():
+                            traits[trait_key] = trait_value
+                            
+                            # Check for documentation specifically
+                            if trait_key == 'smithy.api#documentation':
+                                documentation = trait_value
+                
+                # Also check for direct trait-like keys at the top level
+                for key, value in shape_data.items():
+                    # Look for actual trait patterns
+                    if (key.startswith('smithy.api#') or 
+                        key.startswith('aws.api#') or
+                        key.startswith('aws.protocols#') or
+                        key.startswith('aws.auth#') or
+                        key.startswith('com.amazonaws') and '#' in key):
+                        traits[key] = value
+                    elif key == 'documentation':
+                        documentation = value
+                    # Also check for trait-like patterns
+                    elif key in ['deprecated', 'sensitive', 'required', 'idempotent', 'readonly']:
+                        traits[key] = value
+                        
+            return traits, documentation
+        
+        # Add comprehensive metadata for all shapes
+        enhanced_shapes = {}
+        all_shapes_to_process = {
+            **{resource_shape: shapes[resource_shape]},
+            **related_operations,
+            **error_shapes,
+            **related_shapes
+        }
+        
+        for shape_name, shape_data in all_shapes_to_process.items():
+            traits, docs = extract_traits_and_docs(shape_data)
+            enhanced_shapes[shape_name] = {
+                'shape_data': shape_data,
+                'traits': traits,
+                'documentation': docs,
+                'type': shape_data.get('type', 'unknown')
+            }
+        
+        resource_info['enhanced_shapes'] = enhanced_shapes
+        
+        # Extract HTTP bindings and constraints for operations
+        operation_details = {}
+        for op_name, op_data in related_operations.items():
+            op_details = {
+                'operation_data': op_data,
+                'http_bindings': {},
+                'authentication': {},
+                'pagination': {},
+                'constraints': {}
+            }
+            
+            # Extract traits from the operation
+            op_traits, _ = extract_traits_and_docs(op_data)
+            
+            # Categorize traits by type
+            for trait_key, trait_value in op_traits.items():
+                if ('http' in trait_key.lower() or 
+                    trait_key.startswith('smithy.api#http') or
+                    trait_key.startswith('aws.protocols')):
+                    op_details['http_bindings'][trait_key] = trait_value
+                elif ('auth' in trait_key.lower() or
+                      trait_key.startswith('aws.auth') or
+                      trait_key.startswith('smithy.api#auth')):
+                    op_details['authentication'][trait_key] = trait_value
+                elif ('paginated' in trait_key.lower() or 
+                      'pagination' in trait_key.lower() or
+                      trait_key.startswith('aws.api#paginated')):
+                    op_details['pagination'][trait_key] = trait_value
+                elif ('constraint' in trait_key.lower() or 
+                      'validation' in trait_key.lower() or
+                      'required' in trait_key.lower()):
+                    op_details['constraints'][trait_key] = trait_value
+                    
+            operation_details[op_name] = op_details
+        
+        resource_info['operation_details'] = operation_details
+        
+        # Extract enum values and union variants
+        enums_and_unions = {}
+        for shape_name, shape_data in all_shapes_to_process.items():
+            if shape_data.get('type') == 'enum':
+                enums_and_unions[shape_name] = {
+                    'type': 'enum',
+                    'members': shape_data.get('members', [])
+                }
+            elif shape_data.get('type') == 'union':
+                enums_and_unions[shape_name] = {
+                    'type': 'union',
+                    'members': shape_data.get('members', {})
+                }
+        
+        resource_info['enums_and_unions'] = enums_and_unions
+        
+        # Extract service metadata (handle Smithy format)
+        service_shape_name = f"com.amazonaws.{service}#{service.upper()}"
+        service_shape = shapes.get(service_shape_name, {})
+        
+        # Try alternative service shape names
+        if not service_shape:
+            for shape_name, shape_data in shapes.items():
+                if shape_data.get('type') == 'service' and service in shape_name.lower():
+                    service_shape = shape_data
+                    service_shape_name = shape_name
+                    break
+        
+        # Extract service-level traits
+        service_traits = {}
+        if service_shape:
+            service_traits, _ = extract_traits_and_docs(service_shape)
+        
+        resource_info['service_metadata'] = {
+            'service_name': service,
+            'smithy_version': data.get('smithy', ''),
+            'service_shape': service_shape_name if service_shape else None,
+            'service_traits': service_traits,
+            'total_shapes': len(shapes),
+            'total_operations': len(operations),
+            'total_errors': len(error_shapes),
+            'namespace': service_namespace.rstrip('#'),
+            'metadata': data.get('metadata', {}),
+            'note': 'HTTP bindings, authentication middleware, and pagination are implemented in the generated Go SDK code, not in the Smithy model file. Use read_resource_api() to see the actual implementation details.'
+        }
+        
+        # Add summary statistics
+        resource_info['summary'] = {
+            'resource_shape': resource_shape,
+            'related_operations_count': len(related_operations),
+            'error_shapes_count': len(error_shapes),
+            'related_shapes_count': len(related_shapes),
+            'total_enhanced_shapes': len(enhanced_shapes),
+            'enums_count': len([s for s in enums_and_unions.values() if s['type'] == 'enum']),
+            'unions_count': len([s for s in enums_and_unions.values() if s['type'] == 'union']),
+            'has_documentation': len([s for s in enhanced_shapes.values() if s['documentation']]),
+            'shapes_with_traits': len([s for s in enhanced_shapes.values() if s['traits']]),
+            'operations_with_http_bindings': len([op for op in operation_details.values() if op['http_bindings']]),
+            'operations_with_auth': len([op for op in operation_details.values() if op['authentication']]),
+            'paginated_operations': len([op for op in operation_details.values() if op['pagination']])
+        }
+        
+        return json.dumps(resource_info, indent=2)
             
     except Exception as e:
-        return f"Error reading service model for {service}: {str(e)}"
+        return f"Error reading service model for {service}/{resource}: {str(e)}"
 
 @tool
 def build_controller_agent(service: str) -> str:
