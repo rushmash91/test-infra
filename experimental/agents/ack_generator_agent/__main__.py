@@ -14,6 +14,7 @@ import argparse
 
 from rich.console import Console
 from rich.panel import Panel
+from strands_tools import editor
 
 from ack_generator_agent.prompts import ACK_GENERATOR_SYSTEM_PROMPT
 from ack_generator_agent.tools import (
@@ -41,6 +42,15 @@ from utils.logging import configure_logging
 
 console = Console()
 
+import logging
+# Enables Strands debug log level
+logging.getLogger("strands").setLevel(logging.DEBUG)
+
+# Sets the logging format and streams logs to stderr
+logging.basicConfig(
+    format="%(levelname)s | %(name)s | %(message)s",
+    handlers=[logging.StreamHandler()]
+)
 
 def run_agent_cli():
     """Run the agent CLI with command line arguments."""
@@ -80,6 +90,7 @@ def run_agent_cli():
             search_memories,
             list_all_memories,
             search_codegen_knowledge,
+            editor,
         ],
         system_prompt=ACK_GENERATOR_SYSTEM_PROMPT,
         model_id=args.model,

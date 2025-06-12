@@ -27,22 +27,20 @@ from ack_model_agent.tools import (
     save_resource_characteristics,
     query_knowledge_base,
 )
+from utils.bedrock import create_enhanced_agent
 from utils.docs_agent import DocsAgent
 from utils.knowledge_base import retrieve_from_knowledge_base
 from utils.memory_agent import MemoryAgent
 from utils.repo import (
     ensure_ack_directories,
-    ensure_aws_sdk_go_v2_cloned,
     ensure_service_repo_cloned,
     ensure_service_resource_directories,
 )
-from utils.settings import settings
-from utils.bedrock import create_enhanced_agent
+from utils.editor_agent import EditorAgent
 
 console = Console()
 memory_agent = MemoryAgent()
 docs_agent = DocsAgent()
-
 
 @tool
 def call_model_agent(service: str, resource: str) -> str:
@@ -195,36 +193,31 @@ def build_controller_agent(service: str) -> str:
         return f"Error in build_controller_agent: {str(e)}"
 
 
-# TODO(rushmash91): This is a temporary tool to update the generator.yaml file.
-# this will need a lot of checks and possibly a generator.yaml validator tool too
 @tool
-def update_service_generator_config(service: str, new_generator_yaml: str) -> str:
+def update_service_generator_config(service: str, modifications: str, instructions: str) -> str:
     """
-    Replace the generator.yaml file for a given service controller with new content.
-
+    Update the generator.yaml file for a given service controller.
+    
     Args:
         service: Name of the AWS service (e.g., 's3', 'dynamodb')
-        new_generator_yaml: The full new content for generator.yaml
+        modifications: Description of the modifications to make
 
     Returns:
         str: Success or error message
     """
-    try:
+    try:      
         ensure_ack_directories()
         service_path = ensure_service_repo_cloned(service)
         generator_config_path = os.path.join(service_path, "generator.yaml")
 
-        # Remove the old generator.yaml if it exists
-        if os.path.exists(generator_config_path):
-            os.remove(generator_config_path)
+        if not os.path.exists(generator_config_path):
+            return f"Error: generator.yaml not found for service '{service}'"
 
-        # Write the new generator.yaml
-        with open(generator_config_path, "w") as f:
-            f.write(new_generator_yaml)
-
-        return f"Successfully updated generator.yaml for {service} at {generator_config_path}"
+        response = EditorAgent(allowed_file_path=generator_config_path).edit_file(modifications, instructions)
+        return str(response)
+        
     except Exception as e:
-        return f"Error updating generator.yaml for {service}: {str(e)}"
+        return f"ERROR: {str(e)}"
 
 
 @tool
@@ -269,15 +262,6 @@ def list_all_memories() -> str:
     return memory_agent.list_all_memories()
 
 
-# TODO(rushmash91): This is lookup to look up code-generator configs/ if we have a validator might not be needed
-@tool
-def lookup_code_generator_config(service: str, resource: str) -> str:
-    """
-    Look up the code-generator config for a given service and resource.
-    """
-    return f""
-
-
 @tool
 def save_error_solution(error_message: str, solution: str, metadata: dict) -> str:
     """
@@ -312,7 +296,7 @@ def search_codegen_knowledge(query: str, numberOfResults: int = 5) -> str:
     return retrieve_from_knowledge_base(
         text=query,
         numberOfResults=numberOfResults,
-        score=0.6,  # Higher threshold for more relevant results
+        score=0.6,
         knowledgeBaseId="",
     )
 

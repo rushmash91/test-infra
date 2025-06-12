@@ -146,10 +146,10 @@ operation_analysis = {
             }}
         },
         "field_mappings": {
-            "repositoryName": "repository.repositoryName",  # Input field maps to output field
-            "imageTagMutability": "repository.imageTagMutability",
-            "imageScanningConfiguration": "repository.imageScanningConfiguration",
-            "encryptionConfiguration": "repository.encryptionConfiguration"
+            "repositoryName": "Name",  # Input field maps to output field
+            "imageTagMutability": "imageTagMutability",
+            "imageScanningConfiguration": "imageScanningConfiguration",
+            "encryptionConfiguration": "encryptionConfiguration"
         },
         "field_renames": {
             # Map input field names to different output field names
@@ -220,17 +220,6 @@ resource_characteristics = {
 4. save_error_catalog(error_catalog, service, resource)
 5. save_resource_characteristics(resource_characteristics, service, resource)
 
-5. Report Analysis Summary
-- Operations discovered and classified
-- Field types and characteristics identified  
-- Error conditions cataloged
-- Resource behavior patterns noted
-- Data completeness assessment
-
 Response Format:
-1. "Analyzing AWS {service} {resource} resource..."
-2. Execute knowledge base queries
-3. Extract and classify all resource information
-4. Save structured analysis data
-5. "Resource analysis complete. Extracted [summary of findings]"
+"Resource analysis complete. No summary or Overview needed"
 """
