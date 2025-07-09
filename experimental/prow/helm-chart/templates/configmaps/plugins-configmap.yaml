@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plugins
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    {{- include "ack-prow.labels" . | nindent 4 }}
+data:
+  plugins.yaml: |
+    # Basic plugin configuration
+    plugins:
+      {{- range .Values.plugins.repositories }}
+      {{ . }}:
+      - approve
+      - assign
+      - help
+      - hold
+      - label
+      - lgtm
+      - lifecycle
+      - size
+      - trigger
+      - wip
+      {{- end }}
+      
+    # External plugins configuration
+    external_plugins:
+      {{ .Values.github.organization }}/community:
+      - name: workflow-agent
+        endpoint: http://workflow-agent.{{ include "ack-prow.prowNamespace" . }}:8080/tamer
+        events:
+        - issue_comment
+        - issues
+
+    # Basic approve configuration
+    approve:
+    - repos:
+      {{- range .Values.plugins.repositories }}
+      - {{ . }}
+      {{- end }}
+      require_self_approval: {{ .Values.plugins.approve.requireSelfApproval }}
+
+    # Basic LGTM configuration
+    lgtm:
+    - repos:
+      {{- range .Values.plugins.repositories }}
+      - {{ . }}
+      {{- end }}
+      review_acts_as_lgtm: {{ .Values.plugins.lgtm.reviewActsAsLgtm }}
+
+    # Basic trigger configuration
+    triggers:
+    - orgs:
+      {{- range .Values.plugins.repositories }}
+      - {{ . | split "/" | first }}
+      {{- end }}
+      only_org_members: {{ .Values.plugins.triggers.onlyOrgMembers }}

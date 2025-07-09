@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    {{- include "ack-prow.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    prowjob_namespace: {{ .Values.prowConfig.prowJobNamespace }}
+    pod_namespace: {{ .Values.prowConfig.podNamespace }}
+
+    # Basic GitHub configuration
+    github:
+      link_url: "https://github.com"
+
+    # Deck configuration with S3 spyglass
+    deck:
+      spyglass:
+        size_limit: {{ .Values.prowConfig.spyglass.sizeLimit }}
+        gcs_browser_prefix: "{{ .Values.prowConfig.spyglass.gcsBrowserPrefix }}"
+        viewers:
+          {{- range $pattern, $viewers := .Values.prowConfig.spyglass.viewers }}
+          "{{ $pattern }}":
+          {{- range $viewer := $viewers }}
+          - "{{ $viewer }}"
+          {{- end }}
+          {{- end }}
+      tide_update_period: 1s
+
+    # Plank configuration with S3 storage
+    plank:
+      job_url_prefix_config:
+        "*": "https://{{ .Values.prowConfig.domain }}/view/"
+      job_url_template: 'https://{{ .Values.prowConfig.domain }}/view/s3/{{ .Values.aws.s3.bucket }}/logs/{{`{{.Spec.Job}}/{{.Status.BuildID}}`}}'
+      default_decoration_configs:
+        "*":
+          timeout: {{ .Values.prowConfig.defaultDecoration.timeout }}
+          grace_period: {{ .Values.prowConfig.defaultDecoration.gracePeriod }}
+          gcs_configuration:
+            bucket: {{ .Values.aws.s3.bucket }}
+            path_strategy: {{ .Values.prowConfig.defaultDecoration.pathStrategy }}
+          s3_credentials_secret: "s3-credentials"
+          utility_images:
+            clonerefs: "{{ .Values.prowConfig.defaultDecoration.utilityImages.clonerefs }}"
+            initupload: "{{ .Values.prowConfig.defaultDecoration.utilityImages.initupload }}"
+            entrypoint: "{{ .Values.prowConfig.defaultDecoration.utilityImages.entrypoint }}"
+            sidecar: "{{ .Values.prowConfig.defaultDecoration.utilityImages.sidecar }}"
+
+    # Minimal sinker configuration
+    sinker:
+      resync_period: {{ .Values.components.sinker.resyncPeriod | default "1m" }}
+      max_prowjob_age: {{ .Values.components.sinker.maxProwjobAge | default "48h" }}
+      max_pod_age: {{ .Values.components.sinker.maxPodAge | default "30m" }}
+
+    # Basic tide configuration
+    tide:
+      sync_period: {{ .Values.prowConfig.tide.syncPeriod }}
+      queries:
+      {{- range $query := .Values.prowConfig.tide.queries }}
+      - orgs:
+        {{- range $org := $query.orgs }}
+        - {{ $org }}
+        {{- end }}
+        {{- if hasKey $query "labels" }}
+        labels:
+        {{- range $label := $query.labels }}
+        - {{ $label }}
+        {{- end }}
+        {{- end }}
+        {{- if hasKey $query "missingLabels" }}
+        missingLabels:
+        {{- range $label := $query.missingLabels }}
+        - {{ $label }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      merge_method:
+        {{ .Values.github.organization }}: "{{ .Values.prowConfig.tide.mergeMethod }}"
+
+    # Basic branch protection
+    branch-protection:
+      orgs:
+        {{ .Values.github.organization }}:
+          protect: {{ .Values.prowConfig.branchProtection.protect }}
+          required_status_checks:
+            strict: {{ .Values.prowConfig.branchProtection.requiredStatusChecks.strict }}
+          enforce_admins: {{ .Values.prowConfig.branchProtection.enforceAdmins }}
+          required_pull_request_reviews:
+            dismiss_stale_reviews: {{ .Values.prowConfig.branchProtection.requiredPullRequestReviews.dismissStaleReviews }}
+            require_code_owner_reviews: {{ .Values.prowConfig.branchProtection.requiredPullRequestReviews.requireCodeOwnerReviews }}
+
+    # Enable pod decoration for all jobs
+    decorate_all_jobs: {{ .Values.prowConfig.decorate_all_jobs }}

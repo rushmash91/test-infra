@@ -1,0 +1,38 @@
+{{- if .Values.workflowAgent.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflows-config
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    {{- include "ack-prow.labels" . | nindent 4 }}
+data:
+  workflows.yaml: |
+    workflows:
+      {{- range $name, $workflow := .Values.workflowAgent.workflows }}
+      {{ $name }}:
+        description: "{{ $workflow.description }}"
+        image: "{{ $workflow.image }}"
+        command: {{ toYaml $workflow.command | nindent 8 }}
+        required_args: {{ toYaml $workflow.requiredArgs | nindent 8 }}
+        optional_args: {{ toYaml $workflow.optionalArgs | nindent 8 }}
+        {{- if $workflow.environment }}
+        environment:
+          {{- range $key, $value := $workflow.environment }}
+          {{ $key }}: {{ $value | quote }}
+          {{- end }}
+        {{- end }}
+        {{- if $workflow.environmentFromSecrets }}
+        environmentFromSecrets:
+          {{- range $key, $value := $workflow.environmentFromSecrets }}
+          {{ $key }}:
+            name: "{{ $value.name }}"
+            key: "{{ $value.key }}"
+          {{- end }}
+        {{- end }}
+        timeout: "{{ $workflow.timeout }}"
+        resources:
+          cpu: "{{ $workflow.resources.cpu }}"
+          memory: "{{ $workflow.resources.memory }}"
+      {{- end }}
+{{- end }}

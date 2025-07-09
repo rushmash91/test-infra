@@ -1,0 +1,59 @@
+{{- if .Values.components.prowControllerManager.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prow-controller-manager
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    app: prow-controller-manager
+    {{- include "ack-prow.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.components.prowControllerManager.replicas }}
+  selector:
+    matchLabels:
+      app: prow-controller-manager
+  template:
+    metadata:
+      labels:
+        app: prow-controller-manager
+        {{- include "ack-prow.labels" . | nindent 8 }}
+      {{- with .Values.global.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: prow
+      containers:
+      - name: prow-controller-manager
+        image: {{ .Values.components.prowControllerManager.image }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        args:
+        - --config-path=/etc/config/config.yaml
+        - --github-app-id=$(GITHUB_APP_ID)
+        - --github-app-private-key-path=/etc/github/private-key
+        - --dry-run=false
+        env:
+        - name: GITHUB_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-app
+              key: app-id
+        {{- with .Values.components.prowControllerManager.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: github-app
+          mountPath: /etc/github
+          readOnly: true
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+      volumes:
+      - name: github-app
+        secret:
+          secretName: github-app
+      - name: config
+        configMap:
+          name: config
+{{- end }}

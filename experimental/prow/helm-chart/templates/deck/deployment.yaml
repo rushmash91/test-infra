@@ -1,0 +1,79 @@
+{{- if .Values.components.deck.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deck
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    app: deck
+    {{- include "ack-prow.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.components.deck.replicas }}
+  selector:
+    matchLabels:
+      app: deck
+  template:
+    metadata:
+      labels:
+        app: deck
+        {{- include "ack-prow.labels" . | nindent 8 }}
+      {{- with .Values.global.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: prow
+      containers:
+      - name: deck
+        image: {{ .Values.components.deck.image }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        args:
+        - --config-path=/etc/config/config.yaml
+        - --plugin-config=/etc/plugins/plugins.yaml
+        - --tide-url=http://tide/
+        - --hook-url=http://hook:8888/plugin-help
+        - --github-endpoint=https://api.github.com
+        - --github-app-id=$(GITHUB_APP_ID)
+        - --github-app-private-key-path=/etc/github/private-key
+        - --cookie-secret=/etc/cookie/secret
+        - --dry-run=false
+        ports:
+        - name: http
+          containerPort: 8080
+        env:
+        - name: GITHUB_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-app
+              key: app-id
+        {{- with .Values.components.deck.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        - name: github-app
+          mountPath: /etc/github
+          readOnly: true
+        - name: plugins
+          mountPath: /etc/plugins
+          readOnly: true
+        - name: cookie-secret
+          mountPath: /etc/cookie
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: config
+      - name: github-app
+        secret:
+          secretName: github-app
+      - name: plugins
+        configMap:
+          name: plugins
+      - name: cookie-secret
+        secret:
+          secretName: cookie
+{{- end }}

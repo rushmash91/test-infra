@@ -1,0 +1,46 @@
+{{- if .Values.components.horologium.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: horologium
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    app: horologium
+    {{- include "ack-prow.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.components.horologium.replicas }}
+  selector:
+    matchLabels:
+      app: horologium
+  template:
+    metadata:
+      labels:
+        app: horologium
+        {{- include "ack-prow.labels" . | nindent 8 }}
+      {{- with .Values.global.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: prow
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: horologium
+        image: {{ .Values.components.horologium.image }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        args:
+        - --config-path=/etc/config/config.yaml
+        - --dry-run=false
+        {{- with .Values.components.horologium.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: config
+{{- end }}

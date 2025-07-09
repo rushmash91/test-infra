@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jobs-config
+  namespace: {{ .Values.prowConfig.prowJobNamespace }}
+  labels:
+    {{- include "ack-prow.labels" . | nindent 4 }}
+data:
+  jobs_config.yaml: |
+    # This config is used to generate `jobs.yaml` file using `generator.go` and
+    # the Go templates.
+
+    # Adding a service to the `aws_services` array will enable CI/CD
+
+    # List of AWS services supported in ACK testing infrastructure.
+    aws_services:
+    {{- range .Values.jobs.aws_services }}
+    - {{ . }}
+    {{- end }}
+
+    # List of service that will execute a set of tests for CARM
+    # These service need a CARM_ENABLED environment variable set to true
+    carm_test_services:
+    {{- range .Values.jobs.carm_test_services }}
+    - {{ . }}
+    {{- end }}
+
+    # List of AWS services onboarded for soak testing, executing in their Prow
+    # cluster on every release
+    soak_test_on_release_service_names: {{ toYaml .Values.jobs.soak_test_on_release_service_names | nindent 4 }}
+
+    # List of AWS services whose controller gets generated and e2e tested whenever
+    # there is a new code-generator change.
+    # These controllers are generated and tested to validate that changes in code-generator
+    # are not breaking changes for service controllers. This helps surface any early
+    # issues with code-generator release.
+    # Since there can be some breaking changes, these tests are marked optional for
+    # prow merge criteria.
+    code_gen_presubmit_services:
+    {{- range .Values.jobs.code_gen_presubmit_services }}
+    - {{ . }}
+    {{- end }}
+
+    runtime_presubmit_services:
+    {{- range .Values.jobs.runtime_presubmit_services }}
+    - {{ . }}
+    {{- end }}

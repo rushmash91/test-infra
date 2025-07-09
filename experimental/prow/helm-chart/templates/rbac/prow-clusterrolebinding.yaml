@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prow
+  labels:
+    app: prow
+    {{- include "ack-prow.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prow
+subjects:
+- kind: ServiceAccount
+  name: prow
+  namespace: {{ include "ack-prow.prowNamespace" . }}

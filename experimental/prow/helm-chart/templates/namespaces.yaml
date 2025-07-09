@@ -1,0 +1,21 @@
+{{- if .Values.namespaces.prow.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespaces.prow.name }}
+  labels:
+    name: {{ .Values.namespaces.prow.name }}
+    app.kubernetes.io/part-of: {{ include "ack-prow.name" . }}
+    {{- include "ack-prow.labels" . | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.namespaces.prowJobs.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespaces.prowJobs.name }}
+  labels:
+    name: {{ .Values.namespaces.prowJobs.name }}
+    app.kubernetes.io/part-of: {{ include "ack-prow.name" . }}
+    {{- include "ack-prow.labels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:Retrieve",
+        "bedrock:InvokeModel",
+        "bedrock-agent:RetrieveAndGenerate",
+        "bedrock-agent:Retrieve"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:us-west-2:086987147623:knowledge-base/WN5I1BIMGT"
+      ]
+    }
+  ]
+}

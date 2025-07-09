@@ -1,0 +1,88 @@
+{{- if .Values.workflowAgent.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-agent
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    app: workflow-agent
+    {{- include "ack-prow.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workflow-agent
+  template:
+    metadata:
+      labels:
+        app: workflow-agent
+        {{- include "ack-prow.labels" . | nindent 8 }}
+      {{- with .Values.global.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: workflow-agent
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: webhook-server
+        image: {{ .Values.workflowAgent.image }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        command: ["./webhook-server"]
+        args:
+        - --port=8080
+        - --allowed-team={{ .Values.workflowAgent.allowedTeam }}
+        - --github-app-id=$(GITHUB_APP_ID)
+        - --github-app-private-key-path=/etc/github/private-key
+        - --github-endpoint=http://ghproxy
+        - --github-endpoint=https://api.github.com
+        - --dry-run={{ .Values.workflowAgent.dryRun | default false }}
+        env:
+        - name: GITHUB_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-app-files
+              key: app-id
+        - name: PROW_JOB_ID
+          value: {{ .Values.prowConfig.prowJobNamespace }}
+        - name: PROW_JOB_NAMESPACE
+          value: {{ .Values.prowConfig.prowJobNamespace }}
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        volumeMounts:
+        - mountPath: /etc/workflows
+          name: workflows-config
+          readOnly: true
+        - mountPath: /etc/github
+          name: github-app
+          readOnly: true
+        - mountPath: /etc/webhook
+          name: hmac
+          readOnly: true
+      volumes:
+      - name: workflows-config
+        configMap:
+          name: workflows-config
+      - name: github-app
+        secret:
+          secretName: github-app-files
+      - name: hmac
+        secret:
+          secretName: hmac-token
+{{- end }}

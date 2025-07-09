@@ -1,0 +1,19 @@
+apiVersion: v2
+name: ack-prow
+description: A Helm chart for deploying Prow CI/CD system with ACK workflow extensions
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">= 1.16.0"
+home: https://github.com/aws-controllers-k8s/test-infra
+maintainers:
+  - name: ACK Team
+sources:
+  - https://github.com/aws-controllers-k8s/test-infra
+keywords:
+  - prow
+  - kubernetes
+  - ci
+  - cd
+  - aws-controllers-k8s
+  - ack

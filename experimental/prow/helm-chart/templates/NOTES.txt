@@ -1,0 +1,27 @@
+Thank you for installing {{ .Chart.Name }} version {{ .Chart.Version }}!
+
+Your Prow CI/CD system has been deployed successfully. Here's how to access the components:
+
+1. Deck (UI) is available at:
+   kubectl port-forward -n {{ include "ack-prow.prowNamespace" . }} svc/deck 8080:80
+   Then open your browser at: http://localhost:8080
+
+2. Hook endpoint (for GitHub webhooks) is available at:
+   kubectl port-forward -n {{ include "ack-prow.prowNamespace" . }} svc/hook 8081:8888
+   Endpoint: http://localhost:8081
+
+3. To view logs in the Prow jobs namespace:
+   kubectl get pods -n {{ .Values.prowConfig.prowJobNamespace }}
+
+4. To check if logs are being stored in S3:
+   aws s3 ls s3://{{ .Values.aws.s3.bucket }}/logs/
+
+IMPORTANT NEXT STEPS:
+
+1. Make sure to set up GitHub webhooks to point to your Hook service
+2. If using GitHub App authentication, verify your app is configured correctly
+3. Check that your S3 bucket permissions are set up correctly for log storage
+4. For external access, consider setting up an Ingress to expose the Deck UI
+
+For more information, see the Prow documentation at:
+https://docs.prow.k8s.io/

@@ -1,0 +1,45 @@
+{{- if .Values.components.sinker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sinker
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    app: sinker
+    {{- include "ack-prow.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.components.sinker.replicas }}
+  selector:
+    matchLabels:
+      app: sinker
+  template:
+    metadata:
+      labels:
+        app: sinker
+        {{- include "ack-prow.labels" . | nindent 8 }}
+      {{- with .Values.global.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: prow
+      containers:
+      - name: sinker
+        image: {{ .Values.components.sinker.image }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        args:
+        - --config-path=/etc/config/config.yaml
+        - --dry-run=false
+        {{- with .Values.components.sinker.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: config
+{{- end }}

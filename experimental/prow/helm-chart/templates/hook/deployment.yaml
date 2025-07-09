@@ -1,0 +1,77 @@
+{{- if .Values.components.hook.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hook
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    app: hook
+    {{- include "ack-prow.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.components.hook.replicas }}
+  selector:
+    matchLabels:
+      app: hook
+  template:
+    metadata:
+      labels:
+        app: hook
+        {{- include "ack-prow.labels" . | nindent 8 }}
+      {{- with .Values.global.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: prow
+      containers:
+      - name: hook
+        image: {{ .Values.components.hook.image }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        args:
+        - --config-path=/etc/config/config.yaml
+        - --github-app-id=$(GITHUB_APP_ID)
+        - --github-app-private-key-path=/etc/github/private-key
+        - --github-endpoint=https://api.github.com
+        - --hmac-secret-file=/etc/webhook/hmac
+        - --plugin-config=/etc/plugins/plugins.yaml
+        - --dry-run=false
+        ports:
+        - name: http
+          containerPort: 8888
+        env:
+        - name: GITHUB_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-app
+              key: app-id
+        {{- with .Values.components.hook.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: hmac
+          mountPath: /etc/webhook
+          readOnly: true
+        - name: github-app
+          mountPath: /etc/github
+          readOnly: true
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        - name: plugins
+          mountPath: /etc/plugins
+          readOnly: true
+      volumes:
+      - name: hmac
+        secret:
+          secretName: hmac-token
+      - name: github-app
+        secret:
+          secretName: github-app
+      - name: config
+        configMap:
+          name: config
+      - name: plugins
+        configMap:
+          name: plugins
+{{- end }}

@@ -1,0 +1,18 @@
+{{- if .Values.workflowAgent.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-agent
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    app: workflow-agent
+    {{- include "ack-prow.labels" . | nindent 4 }}
+spec:
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: workflow-agent
+{{- end }}

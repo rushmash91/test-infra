@@ -1,0 +1,264 @@
+# Default values for ack-prow helm chart
+
+# Namespace configuration
+namespaces:
+  prow:
+    create: true
+    name: "prow"
+  prowJobs:
+    create: true
+    name: "prow-jobs"
+
+# GitHub configuration
+github:
+  organization: "ack-prow-staging"
+  bot:
+    username: "ack-test-agent"
+    emailPrefix: "219906516"
+  app:
+    id: "1469732"
+    privateKey: "<redacted-private-key>"
+    clientId: ""
+    cert: ""
+  hmacToken: "<redacted-hmac-token>"
+  cookieSecret: "<redacted-cookie-secret>"
+
+# AWS Configuration
+aws:
+  region: "us-west-2"
+  s3:
+    bucket: "ack-prow-staging-artifacts"
+    forcePathStyle: false
+    # If using IRSA, set credentials to empty and provide the role ARN
+    credentials:
+      accessKey: ""
+      secretKey: ""
+      endpoint: ""
+      insecure: false
+    # IAM role to use with service account
+    roleArn: "arn:aws:iam::086987147623:role/workflow-agent-role"
+
+# Common settings for all components
+global:
+  imageRegistry: ""
+  imagePullPolicy: IfNotPresent
+  podLabels: {}
+  podAnnotations: {}
+
+# Core Prow configuration
+prowConfig:
+  prowJobNamespace: "prow-jobs"
+  podNamespace: "prow-jobs"
+  decorate_all_jobs: true
+  domain: "k8s-prow-prowingr-a63f036bb1-1385909147.us-west-2.elb.amazonaws.com"
+  # Spyglass configuration for viewing logs
+  spyglass:
+    sizeLimit: 100000000
+    gcsBrowserPrefix: "https://ack-prow-staging-artifacts.s3.us-west-2.amazonaws.com/"
+    viewers:
+      "started.json|finished.json":
+      - "metadata"
+      "build-log.txt":
+      - "buildlog"
+      "artifacts/junit*.xml":
+      - "junit"
+  # Job decoration defaults
+  defaultDecoration:
+    timeout: "2h"
+    gracePeriod: "15m"
+    pathStrategy: "explicit"
+    # Utility container images
+    utilityImages:
+      clonerefs: "gcr.io/k8s-prow/clonerefs:v20250606-e2a3dbcc9"
+      initupload: "gcr.io/k8s-prow/initupload:v20250606-e2a3dbcc9"
+      entrypoint: "gcr.io/k8s-prow/entrypoint:v20250606-e2a3dbcc9"
+      sidecar: "gcr.io/k8s-prow/sidecar:v20250606-e2a3dbcc9"
+  # Tide configuration for automatic merges
+  tide:
+    syncPeriod: "2m"
+    mergeMethod: "squash"
+    queries:
+      - orgs: ["ack-prow-staging"]
+        labels:
+          - lgtm
+          - approved
+        missingLabels:
+          - do-not-merge/hold
+          - do-not-merge/work-in-progress
+  # Branch protection
+  branchProtection:
+    protect: true
+    requiredStatusChecks:
+      strict: false
+    enforceAdmins: false
+    requiredPullRequestReviews:
+      dismissStaleReviews: false
+      requireCodeOwnerReviews: false
+
+# Plugins configuration
+plugins:
+  repositories:
+    - "ack-prow-staging"
+  approve:
+    requireSelfApproval: false
+  lgtm:
+    reviewActsAsLgtm: true
+  triggers:
+    onlyOrgMembers: true
+
+# Configuration for workflow agent
+workflowAgent:
+  enabled: true
+  image: "086987147623.dkr.ecr.us-west-2.amazonaws.com/ack-prow-webhook:v1.0.23"
+  tag: "latest"
+  dryRun: false
+  allowedTeam: "ack-prow-staging-admins"
+  workflows:
+    ack_resource_workflow:
+      description: "ACK resource addition workflow"
+      image: "086987147623.dkr.ecr.us-west-2.amazonaws.com/workflow-agent:v1.0.14"
+      command: ["./prow-job.sh"]
+      requiredArgs: ["service", "resource"]
+      optionalArgs: []
+      environment:
+        GITHUB_ORG: "ack-prow-staging"
+        GITHUB_EMAIL_PREFIX: "219906516"
+        MODEL_AGENT_KB_ID: "WN5I1BIMGT"
+      environmentFromSecrets:
+        GITHUB_TOKEN:
+          name: "tamer-github-token"
+          key: "token"
+        GITHUB_ACTOR:
+          name: "tamer-github-actor"
+          key: "actor"
+      timeout: "30m"
+      resources:
+        cpu: "2"
+        memory: "4Gi"
+
+# Component-specific settings
+components:
+  # Deck - UI for Prow
+  deck:
+    enabled: true
+    image: "us-docker.pkg.dev/k8s-infra-prow/images/deck:v20240802-66b115076"
+    replicas: 1
+    serviceType: ClusterIP
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  # Hook - Handles GitHub webhooks
+  hook:
+    enabled: true
+    image: "us-docker.pkg.dev/k8s-infra-prow/images/hook:v20240802-66b115076"
+    replicas: 1
+    serviceType: ClusterIP
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  # Horologium - Triggers periodic jobs
+  horologium:
+    enabled: true
+    image: "us-docker.pkg.dev/k8s-infra-prow/images/horologium:v20240802-66b115076"
+    replicas: 1
+    resources:
+      limits:
+        cpu: 200m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+  # Sinker - Cleans up old jobs and pods
+  sinker:
+    enabled: true
+    image: "us-docker.pkg.dev/k8s-infra-prow/images/sinker:v20240802-66b115076"
+    replicas: 1
+    resyncPeriod: "1m"
+    maxProwjobAge: "48h"
+    maxPodAge: "30m"
+    resources:
+      limits:
+        cpu: 200m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+  # Prow Controller Manager - Manages ProwJobs
+  prowControllerManager:
+    enabled: true
+    image: "us-docker.pkg.dev/k8s-infra-prow/images/prow-controller-manager:v20240802-66b115076"
+    replicas: 1
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  # Tide - Manages PR merges
+  tide:
+    enabled: true
+    image: "us-docker.pkg.dev/k8s-infra-prow/images/tide:v20240802-66b115076"
+    replicas: 1
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  # Crier - Reports job status
+  crier:
+    enabled: true
+    image: "us-docker.pkg.dev/k8s-infra-prow/images/crier:v20240802-66b115076"
+    replicas: 1
+    resources:
+      limits:
+        cpu: 200m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+# Job configurations
+jobs:
+  aws_services:
+    - acm
+    - apigatewayv2
+    - cloudfront
+    - documentdb
+    - dynamodb
+    - ec2
+    - ecr
+    - efs
+    - eks
+    - iam
+    - lambda
+    - pipes
+    - s3
+  carm_test_services:
+    - ecr
+  soak_test_on_release_service_names: []
+  code_gen_presubmit_services:
+    - ecr
+    - iam
+    - s3
+    - ec2
+  runtime_presubmit_services:
+    - ecr
+    - iam
+    - s3

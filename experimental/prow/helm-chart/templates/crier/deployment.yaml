@@ -1,0 +1,64 @@
+{{- if .Values.components.crier.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crier
+  namespace: {{ include "ack-prow.prowNamespace" . }}
+  labels:
+    app: crier
+    {{- include "ack-prow.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.components.crier.replicas }}
+  selector:
+    matchLabels:
+      app: crier
+  template:
+    metadata:
+      labels:
+        app: crier
+        {{- include "ack-prow.labels" . | nindent 8 }}
+      {{- with .Values.global.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: prow
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: crier
+        image: {{ .Values.components.crier.image }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        args:
+        - --blob-storage-workers=10
+        - --config-path=/etc/config/config.yaml
+        - --github-app-id=$(GITHUB_APP_ID)
+        - --github-app-private-key-path=/etc/github/private-key
+        - --github-endpoint=https://api.github.com
+        - --github-workers=10
+        - --kubernetes-blob-storage-workers=10
+        - --dry-run=false
+        env:
+        - name: GITHUB_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-app
+              key: app-id
+        {{- with .Values.components.crier.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        - name: github-app
+          mountPath: /etc/github
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: config
+      - name: github-app
+        secret:
+          secretName: github-app
+{{- end }}
